@@ -1,23 +1,44 @@
 from PyQt6.QtWidgets import QMainWindow,QWidget,QApplication,QVBoxLayout,QHBoxLayout,QTableWidget,QTableWidgetItem,QLineEdit,QLabel,QPushButton,QMessageBox
 import sys
-
+import sqlite3
 
 
 class MainWindow(QMainWindow):
   def __init__(self):
     super().__init__()
 
-    self.products = [
-      {'name':"iPhone",'price':500,'description':"This is an iphone ytyuioojhgfdfghjklkjhgf"},
-      {'name':"iPad",'price':1500,'description':"This is an ipad"},
-      {'name':"iMax",'price':2500,'description':"This is an imac"},
-    ]
-
+    self.conn = sqlite3.connect("products.db")
+    self.create_table()
     self.initUI()
+
+  def load_data(self):
+    cursor = self.conn.cursor()
+    cursor.execute("SELECT * FROM products")
+    products = cursor.fetchall()
+
+    self.table_widget.setRowCount(len(products))
+
+    for row,product in enumerate(products):
+      for column,value in enumerate(product):
+        self.table_widget.setItem(row,column,QTableWidgetItem(str(value)))
+  
+  def create_table(self):
+    cursor = self.conn.cursor()
+    cursor.execute("""
+                   CREATE TABLE IF NOT EXISTS products (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     name TEXT,
+                     price INTEGER,
+                     description TEXT
+                   )
+                   """)
+    self.conn.commit()
+  
 
   def initUI(self):
     self.setWindowTitle("CRUD App")
     self.setGeometry(0,0,700,500)
+
 
     central_widget = QWidget(self)
     self.setCentralWidget(central_widget)
@@ -25,16 +46,12 @@ class MainWindow(QMainWindow):
     layout = QVBoxLayout(central_widget)
 
     self.table_widget = QTableWidget(self)
-    self.table_widget.setRowCount(len(self.products))
-    self.table_widget.setColumnCount(len(self.products[0]))
+    
+    self.table_widget.setColumnCount(4)
     layout.addWidget(self.table_widget)
 
-    self.table_widget.setHorizontalHeaderLabels(self.products[0].keys())
-
-    # Read
-    for row,product in enumerate(self.products):
-      for column,value in enumerate(product.values()):
-        self.table_widget.setItem(row,column,QTableWidgetItem(str(value)))
+    self.table_widget.setHorizontalHeaderLabels(["ID", "Name", "Price", "Description"])
+    self.load_data()
     
     self.name_edit = QLineEdit()
     self.price_edit = QLineEdit()
@@ -68,17 +85,12 @@ class MainWindow(QMainWindow):
     price = self.price_edit.text().strip()
     description = self.description_edit.text().strip()
 
-    if name and price and description:
-      new_product = {'name':name,'price':price,'description':description}
-      self.products.append(new_product)
-      
-      # update the table
-      row_position = len(self.products) - 1
-      self.table_widget.insertRow(row_position)
-      for column,value in enumerate(new_product.values()):
-        self.table_widget.setItem(row_position,column,QTableWidgetItem(str(value)))
-    else:
-      QMessageBox.warning(self,"Error","Please fill in all fields")
+    # adding new product to the db
+    cursor = self.conn.cursor()
+    cursor.execute("INSERT INTO products (name,price,description) VALUES (?,?,?)",(name,price,description))
+    self.conn.commit()
+
+    self.load_data()
     
     self.name_edit.clear()
     self.price_edit.clear()
@@ -91,12 +103,17 @@ class MainWindow(QMainWindow):
     if selected_row < 0 or selected_row >= self.table_widget.rowCount():
       return QMessageBox.warning(self,"Error","Please select a row")
     
+    product_id = int(self.table_widget.item(selected_row,0).text())
+
     response = QMessageBox.question(self,"Delete Product","Do you want to delete this product?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
 
     if response == QMessageBox.StandardButton.Yes:
       # delete the row
-      self.table_widget.removeRow(selected_row)
-      del self.products[selected_row]
+      cursor = self.conn.cursor()
+      cursor.execute("DELETE FROM products WHERE id=?",(product_id,))
+      self.conn.commit()
+
+      self.load_data()
     else:
       return
   
@@ -111,17 +128,16 @@ class MainWindow(QMainWindow):
     name = self.name_edit.text().strip()
     price = self.price_edit.text().strip()
     description = self.description_edit.text().strip()
+    product_id = int(self.table_widget.item(selected_row,0).text())
 
     if name and price and description:
-      updated_product = {'name':name,'price':price,'description':description}
-      self.products[selected_row] = updated_product
+      cursor = self.conn.cursor()
+      cursor.execute("UPDATE products SET name=?, price=?, description=? WHERE id=?",(name,price,description,product_id))
+      self.conn.commit()
 
-      for column,value in enumerate(updated_product.values()):
-        self.table_widget.setItem(selected_row,column,QTableWidgetItem(str(value)))
+      self.load_data()
     else:
       QMessageBox.warning(self,"Error","Please fill in all fields")
-
-
 
 
 app = QApplication(sys.argv)
